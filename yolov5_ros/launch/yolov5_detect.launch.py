@@ -8,8 +8,9 @@ from ament_index_python.packages import get_package_share_directory
 def generate_launch_description():
     yolov5_ros_share_dir = get_package_share_directory('yolov5_ros')
 
-    weights = LaunchConfiguration('weights', default=f'{yolov5_ros_share_dir}/src/yolov5/config/yolov5s.pt')
-    data = LaunchConfiguration('data', default='/home/fmasa/ros2_ws/src/YOLOv5-ROS/yolov5_ros/yolov5_ros/data/coco128.yaml')
+    # weights = LaunchConfiguration('weights', default=f'{yolov5_ros_share_dir}/src/yolov5/config/yolov5s.pt')
+    weights = LaunchConfiguration('weights', default='/home/fmasa/ros2_ws/src/YOLOv5-ROS/yolov5_ros/yolov5_ros/runs/train/exp2/weights/best.pt')
+    data = LaunchConfiguration('data', default='/home/fmasa/ros2_ws/src/YOLOv5-ROS/yolov5_ros/yolov5_ros/data/data_line.yaml')
     # data = LaunchConfiguration('data', default=f'{yolov5_ros_share_dir}/src/yolov5/data/coco128.yaml')
     confidence_threshold = LaunchConfiguration('confidence_threshold', default='0.50')
     iou_threshold = LaunchConfiguration('iou_threshold', default='0.50')
@@ -24,7 +25,7 @@ def generate_launch_description():
     view_image = LaunchConfiguration('view_image', default='true')
     input_image_topic = LaunchConfiguration('input_image_topic', default='/camera_under/rgb/image_raw')
     output_topic = LaunchConfiguration('output_topic', default='/yolov5/detections')
-    publish_image = LaunchConfiguration('publish_image', default='false')
+    publish_image = LaunchConfiguration('publish_image', default='true')
     output_image_topic = LaunchConfiguration('output_image_topic', default='/yolov5/image_out')
 
     declare_weights = DeclareLaunchArgument(

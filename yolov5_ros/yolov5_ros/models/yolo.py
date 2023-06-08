@@ -90,6 +90,7 @@ class Detect(nn.Module):
 
 
 class Model(nn.Module):
+# class DetectionModel(nn.Module):
     # YOLOv5 model
     def __init__(self, cfg='yolov5s.yaml', ch=3, nc=None, anchors=None):  # model, input channels, number of classes
         super().__init__()
@@ -247,6 +248,8 @@ class Model(nn.Module):
             if isinstance(m.anchor_grid, list):
                 m.anchor_grid = list(map(fn, m.anchor_grid))
         return self
+
+DetectionModel = Model
 
 
 def parse_model(d, ch):  # model_dict, input_channels(3)
