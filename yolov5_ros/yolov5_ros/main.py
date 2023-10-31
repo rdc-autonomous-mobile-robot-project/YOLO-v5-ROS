@@ -21,9 +21,9 @@ import rclpy
 from rclpy.node import Node
 from sensor_msgs.msg import Image
 from bboxes_ex_msgs.msg import BoundingBoxes, BoundingBox
-from std_msgs.msg import Header
+from std_msgs.msg import Header, String
 from cv_bridge import CvBridge
-
+from std_srvs.srv import Trigger
 
 class yolov5_demo():
     def __init__(self,  weights,
@@ -188,6 +188,21 @@ class yolov5_ros(Node):
         self.pub_bbox = self.create_publisher(BoundingBoxes, 'yolov5/bounding_boxes', 10)
         self.pub_image = self.create_publisher(Image, 'yolov5/image_raw', 10)
 
+
+
+        self.result_pub = self.create_publisher(String, "/result", 1)
+        self.result = String()
+        self.result.data = ""
+        #crate traffic server
+        self.traffic = self.create_service(Trigger, "traffic_light",self.traffic_callback)
+        #crate traffic client
+        self.start_wp_nav_srv = self.create_client(Trigger,"next_wp")
+        while not self.start_wp_nav_srv.wait_for_service(timeout_sec=1.0):
+            self.get_logger().info('service not available, waiting again...')
+        self.req = Trigger.Request()
+        self.red_detect_flg = False
+        self.detect_flg = False
+
         self.sub_image = self.create_subscription(Image, 'image_raw', self.image_callback,10)
 
         # parameter
@@ -197,20 +212,20 @@ class yolov5_ros(Node):
             sys.path.append(str(ROOT))  # add ROOT to PATH
         ROOT = Path(os.path.relpath(ROOT, Path.cwd()))
 
-        self.declare_parameter('weights', str(ROOT) + '/config/yolov5s.pt')
+        self.declare_parameter('weights', str(ROOT) + '/config/traffic.pt')
         self.declare_parameter('data', str(ROOT) + '/data/coco128.yaml')
         self.declare_parameter('imagez_height', 640)
         self.declare_parameter('imagez_width', 640)
-        self.declare_parameter('conf_thres', 0.25)
-        self.declare_parameter('iou_thres', 0.45)
+        self.declare_parameter('conf_thres', 0.5)
+        self.declare_parameter('iou_thres', 0.5)
         self.declare_parameter('max_det', 1000)
-        self.declare_parameter('device', 'cpu')
+        self.declare_parameter('device', '0')
         self.declare_parameter('view_img', True)
         self.declare_parameter('classes', None)
-        self.declare_parameter('agnostic_nms', False)
+        self.declare_parameter('agnostic_nms', True)
         self.declare_parameter('line_thickness', 2)
         self.declare_parameter('half', False)
-        self.declare_parameter('dnn', False)
+        self.declare_parameter('dnn', True)
 
         self.weights = self.get_parameter('weights').value
         self.data = self.get_parameter('data').value
@@ -249,8 +264,8 @@ class yolov5_ros(Node):
         print(bboxes)
         # print(bbox[0][0])
         i = 0
+        one_box = BoundingBox()
         for score in scores:
-            one_box = BoundingBox()
             one_box.xmin = int(bboxes[0][i])
             one_box.ymin = int(bboxes[1][i])
             one_box.xmax = int(bboxes[2][i])
@@ -258,24 +273,52 @@ class yolov5_ros(Node):
             one_box.probability = float(score)
             one_box.class_id = cls[i]
             bboxes_msg.bounding_boxes.append(one_box)
+
             i = i+1
+
+        if one_box.class_id == "Blue" and one_box.probability > 0.9:
+            self.blue_cnt = +1
+            if self.blue_cnt == 10 and self.red_detect_flg:
+                self.start_wp_nav_srv.call_async(self.req)
+                print("restart wp mavigation")
+                self.red_detect_flg =False
+                self.detect_flg = False
+            else:
+                 pass
+            self.result.data = "Blue"
+
+        elif one_box.class_id == "Red" and one_box.probability > 0.4:
+            self.result.data = "Red"
+            self.red_detect_flg = True
+        else:
+            self.result.data = "None"
+            
+        self.result_pub.publish(self.result)
         
         return bboxes_msg
 
-
+    def traffic_callback(self,req,res):
+        self.get_logger().info('Received trigger request')
+        self.detect_flg = True
+        res.success = True
+        res.message = 'Triggered traffic light'
     def image_callback(self, image:Image):
-        image_raw = self.bridge.imgmsg_to_cv2(image, "bgr8")
+        
         # return (class_list, confidence_list, x_min_list, y_min_list, x_max_list, y_max_list)
-        class_list, confidence_list, x_min_list, y_min_list, x_max_list, y_max_list = self.yolov5.image_callback(image_raw)
+        # class_list, confidence_list, x_min_list, y_min_list, x_max_list, y_max_list = self.yolov5.image_callback(image_raw)
+        if self.detect_flg:
+            self.get_logger().info('Start detection traffic light')
+            image_raw = self.bridge.imgmsg_to_cv2(image, "bgr8")
+            class_list, confidence_list, x_min_list, y_min_list, x_max_list, y_max_list = self.yolov5.image_callback(image_raw)
+            msg = self.yolovFive2bboxes_msgs(bboxes=[x_min_list, y_min_list, x_max_list, y_max_list], scores=confidence_list, cls=class_list, img_header=image.header)
+            self.pub_bbox.publish(msg)
+            self.pub_image.publish(image)
 
-        msg = self.yolovFive2bboxes_msgs(bboxes=[x_min_list, y_min_list, x_max_list, y_max_list], scores=confidence_list, cls=class_list, img_header=image.header)
-        self.pub_bbox.publish(msg)
-
-        self.pub_image.publish(image)
-
-        print("start ==================")
-        print(class_list, confidence_list, x_min_list, y_min_list, x_max_list, y_max_list)
-        print("end ====================")
+            print("start ==================")
+            print(class_list, confidence_list, x_min_list, y_min_list, x_max_list, y_max_list)
+            print("end ====================")
+        else:
+            print("please call detect_flg")
 
 def ros_main(args=None):
     rclpy.init(args=args)
